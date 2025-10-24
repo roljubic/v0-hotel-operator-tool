@@ -1,0 +1,60 @@
+{
+  "name": "thebell-hotel-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hotel Operations Management System",
+  "scripts": {
+    "build": "next build",
+    "db:reset": "echo 'Run SQL scripts in Supabase dashboard'",
+    "db:seed": "echo 'Run scripts/003_seed_sample_data.sql in Supabase dashboard'",
+    "dev": "next dev",
+    "export:logs": "echo 'Use the application interface to export logs'",
+    "export:reports": "echo 'Use the application interface to export reports'",
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "start": "next start",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.2",
+    "@radix-ui/react-dropdown-menu": "^2.1.2",
+    "@radix-ui/react-label": "^2.1.0",
+    "@radix-ui/react-select": "^2.1.2",
+    "@radix-ui/react-separator": "^1.1.0",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-switch": "^1.1.1",
+    "@radix-ui/react-tabs": "^1.1.1",
+    "@supabase/ssr": "latest",
+    "@supabase/supabase-js": "2.58.0",
+    "@vercel/analytics": "^1.3.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "latest",
+    "geist": "^1.3.1",
+    "lucide-react": "^0.454.0",
+    "next": "14.2.25",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "server-only": "latest",
+    "sonner": "latest",
+    "tailwind-merge": "^2.5.5",
+    "tailwindcss-animate": "^1.0.7",
+    "tw-animate-css": "latest"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.9",
+    "@types/node": "^22",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.25",
+    "postcss": "^8.5",
+    "tailwindcss": "^4.1.9",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@8.15.6",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
