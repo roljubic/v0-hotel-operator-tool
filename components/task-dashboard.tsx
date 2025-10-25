@@ -63,10 +63,10 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
   const [lastUpdateTime, setLastUpdateTime] = useState(new Date().toLocaleTimeString())
   const [isRefreshing, setIsRefreshing] = useState(false)
   const router = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
     const fetchBellmen = async () => {
-      const supabase = createClient()
       const { data } = await supabase
         .from("users")
         .select("id, full_name")
@@ -84,120 +84,164 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
 
   useEffect(() => {
     console.log("=".repeat(80))
-    console.log("[v0] 🔄 MANAGER/FRONT DESK DASHBOARD - Starting automatic task polling")
-    console.log("[v0] Polling interval: Every 3 seconds")
+    console.log("[v0] 🔥 SETTING UP REAL-TIME SUBSCRIPTION FOR MANAGER/FRONT DESK")
     console.log("[v0] User:", user.full_name, "Role:", user.role)
     console.log("=".repeat(80))
 
-    const pollTasks = async () => {
-      try {
-        setIsRefreshing(true)
-        const supabase = createClient()
+    const channel = supabase
+      .channel("task-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+        },
+        (payload) => {
+          console.log("=".repeat(80))
+          console.log("[v0] 🎉 REAL-TIME UPDATE RECEIVED!")
+          console.log("=".repeat(80))
+          console.log("[v0] Event Type:", payload.eventType)
+          console.log("[v0] Payload:", JSON.stringify(payload, null, 2))
+          console.log("[v0] Timestamp:", new Date().toISOString())
+          console.log("=".repeat(80))
 
-        console.log("[v0] 📡 Fetching latest tasks from database...")
+          startTransition(async () => {
+            try {
+              if (payload.eventType === "INSERT") {
+                console.log("[v0] ➕ New task created, fetching full details...")
 
-        const { data: latestTasks, error } = await supabase
-          .from("tasks")
-          .select("*")
-          .order("created_at", { ascending: false })
+                const { data: newTask, error } = await supabase
+                  .from("tasks")
+                  .select(`
+                    *,
+                    assigned_user:assigned_to(full_name, role),
+                    creator:created_by(full_name, role)
+                  `)
+                  .eq("id", payload.new.id)
+                  .single()
 
-        if (error) {
-          console.error("[v0] ❌ Error fetching tasks:", error)
-          return
-        }
-
-        if (latestTasks) {
-          console.log(`[v0] ✅ Successfully fetched ${latestTasks.length} tasks`)
-          console.log(
-            "[v0] Task statuses:",
-            latestTasks.map((t) => ({ id: t.id.slice(0, 8), title: t.title, status: t.status })),
-          )
-
-          setTasks((prevTasks) => {
-            console.log("[v0] 🔍 Comparing with previous tasks to detect changes...")
-
-            // Check for status changes
-            latestTasks.forEach((newTask) => {
-              const oldTask = prevTasks.find((t) => t.id === newTask.id)
-
-              if (oldTask && oldTask.status !== newTask.status) {
-                console.log("=".repeat(80))
-                console.log("[v0] 🎉 STATUS CHANGE DETECTED!")
-                console.log("=".repeat(80))
-                console.log("[v0] Task ID:", newTask.id)
-                console.log("[v0] Title:", newTask.title)
-                console.log("[v0] Room:", newTask.room_number || "N/A")
-                console.log("[v0] Old Status:", oldTask.status)
-                console.log("[v0] New Status:", newTask.status)
-                console.log("[v0] Timestamp:", new Date().toISOString())
-                console.log("=".repeat(80))
-
-                let message = `Task updated: ${newTask.title}`
-                let type: "info" | "success" | "warning" = "info"
-
-                if (newTask.status === "completed") {
-                  message = `Task completed: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                  type = "success"
-                } else if (newTask.status === "cancelled") {
-                  message = `Task cancelled: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                  type = "warning"
-                } else if (newTask.status === "empty_room") {
-                  message = `Empty room: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                  type = "info"
+                if (error) {
+                  console.error("[v0] ❌ Error fetching new task:", error)
+                  return
                 }
 
-                console.log("[v0] 🔔 Showing notification:", message)
+                if (newTask) {
+                  console.log("[v0] ✅ New task fetched successfully:", newTask.title)
+                  setTasks((prev) => [newTask, ...prev])
+
+                  setNotifications((prev) => [
+                    ...prev,
+                    {
+                      id: Date.now().toString() + Math.random(),
+                      message: `New task created: ${newTask.title} (Room ${newTask.room_number || "N/A"})`,
+                      type: "info",
+                    },
+                  ])
+                }
+              } else if (payload.eventType === "UPDATE") {
+                console.log("[v0] 🔄 Task updated, fetching full details...")
+
+                const { data: updatedTask, error } = await supabase
+                  .from("tasks")
+                  .select(`
+                    *,
+                    assigned_user:assigned_to(full_name, role),
+                    creator:created_by(full_name, role)
+                  `)
+                  .eq("id", payload.new.id)
+                  .single()
+
+                if (error) {
+                  console.error("[v0] ❌ Error fetching updated task:", error)
+                  return
+                }
+
+                if (updatedTask) {
+                  console.log("=".repeat(80))
+                  console.log("[v0] 🎯 TASK STATUS UPDATE DETECTED!")
+                  console.log("=".repeat(80))
+                  console.log("[v0] Task ID:", updatedTask.id)
+                  console.log("[v0] Title:", updatedTask.title)
+                  console.log("[v0] Room:", updatedTask.room_number || "N/A")
+                  console.log("[v0] Old Status:", payload.old.status)
+                  console.log("[v0] New Status:", updatedTask.status)
+                  console.log("[v0] Timestamp:", new Date().toISOString())
+                  console.log("=".repeat(80))
+
+                  setTasks((prev) => prev.map((task) => (task.id === updatedTask.id ? updatedTask : task)))
+
+                  if (payload.old.status !== updatedTask.status) {
+                    let message = `Task updated: ${updatedTask.title}`
+                    let type: "info" | "success" | "warning" = "info"
+
+                    if (updatedTask.status === "completed") {
+                      message = `Task completed: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
+                      type = "success"
+                    } else if (updatedTask.status === "cancelled") {
+                      message = `Task cancelled: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
+                      type = "warning"
+                    } else if (updatedTask.status === "empty_room") {
+                      message = `Empty room: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
+                      type = "info"
+                    } else if (updatedTask.status === "in_progress") {
+                      message = `Task in progress: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
+                      type = "info"
+                    }
+
+                    console.log("[v0] 🔔 Showing notification:", message)
+
+                    setNotifications((prev) => [
+                      ...prev,
+                      {
+                        id: Date.now().toString() + Math.random(),
+                        message,
+                        type,
+                      },
+                    ])
+                  }
+
+                  setLastUpdateTime(new Date().toLocaleTimeString())
+                }
+              } else if (payload.eventType === "DELETE") {
+                console.log("[v0] 🗑️ Task deleted:", payload.old.id)
+                setTasks((prev) => prev.filter((task) => task.id !== payload.old.id))
 
                 setNotifications((prev) => [
                   ...prev,
                   {
                     id: Date.now().toString() + Math.random(),
-                    message,
-                    type,
+                    message: `Task deleted`,
+                    type: "warning",
                   },
                 ])
               }
-            })
-
-            // Check for new tasks
-            const newTaskIds = latestTasks.map((t) => t.id)
-            const oldTaskIds = prevTasks.map((t) => t.id)
-            const addedTasks = latestTasks.filter((t) => !oldTaskIds.includes(t.id))
-
-            if (addedTasks.length > 0) {
-              console.log(
-                `[v0] ➕ ${addedTasks.length} new task(s) detected:`,
-                addedTasks.map((t) => t.title),
-              )
+            } catch (error) {
+              console.error("[v0] ❌ Error handling real-time update:", error)
             }
-
-            return latestTasks
           })
+        },
+      )
+      .subscribe((status) => {
+        console.log("[v0] 📡 Subscription status:", status)
 
-          setLastUpdateTime(new Date().toLocaleTimeString())
+        if (status === "SUBSCRIBED") {
+          console.log("[v0] ✅ Successfully subscribed to real-time updates!")
+        } else if (status === "CHANNEL_ERROR") {
+          console.error("[v0] ❌ Channel error - real-time updates may not work")
+        } else if (status === "TIMED_OUT") {
+          console.error("[v0] ⏱️ Subscription timed out")
         }
-      } catch (error) {
-        console.error("[v0] ❌ Polling error:", error)
-      } finally {
-        setIsRefreshing(false)
-      }
-    }
-
-    // Poll immediately on mount
-    pollTasks()
-
-    // Then poll every 3 seconds
-    const interval = setInterval(pollTasks, 3000)
+      })
 
     return () => {
-      console.log("[v0] 🛑 Stopping task polling")
-      clearInterval(interval)
+      console.log("[v0] 🛑 Cleaning up real-time subscription")
+      supabase.removeChannel(channel)
     }
-  }, [])
+  }, [user.full_name, user.role])
 
   const handleSignOut = async () => {
     try {
-      const supabase = createClient()
       await supabase.auth.signOut()
       router.push("/auth/login")
     } catch (error) {
@@ -295,8 +339,8 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
                 {user.role.replace("_", " ").toUpperCase()}
               </Badge>
               <div className="flex items-center space-x-2 text-green-600">
-                <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
-                <span className="text-xs">Auto-refresh: {lastUpdateTime}</span>
+                <RefreshCw className="h-3 w-3" />
+                <span className="text-xs">Real-time updates active</span>
               </div>
             </div>
             <div className="flex items-center space-x-4">
