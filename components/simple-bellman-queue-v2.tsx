@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
@@ -14,13 +14,13 @@ interface Task {
   id: string
   title: string
   description: string
+  status?: string
+  priority?: string
   room_number?: string
-  created_at: string
-  creator?: { full_name: string; role: string }
-  assigned_user?: { full_name: string }
   guest_name?: string
   ticket_number?: string
-  status?: string
+  created_at: string
+  creator?: { full_name: string; role: string }
   assigned_to?: string
 }
 
@@ -28,6 +28,7 @@ interface Bellman {
   id: string
   full_name: string
   bellman_status: "in_line" | "in_process" | "off_duty"
+  updated_at?: string
 }
 
 interface SimpleBellmanQueueProps {
@@ -154,6 +155,9 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
     }
   }
 
+  /**
+   * assignTaskToBellman - updated to ensure assigned_to is written and returned
+   */
   const assignTaskToBellman = async () => {
     if (!selectedTask || !selectedAssignee) {
       toast.error("Please select a task and bellman")
@@ -189,35 +193,58 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         )
         toast.success("Task assigned to temporary bellman successfully")
       } else {
-        const { error: taskError } = await supabase
+        // Convert selectedAssignee to string ID (defensive)
+        const assigneeId = String(selectedAssignee)
+        console.log("[v0] 🔵 Assigning task to DB bellman:", assigneeId, "taskId:", selectedTask.id)
+
+        // Write assigned_to and status and return updated row
+        const { data: updatedTask, error: updateError } = await supabase
           .from("tasks")
           .update({
-            assigned_to: selectedAssignee,
+            assigned_to: assigneeId,
             status: "in_progress",
+            updated_at: new Date().toISOString(),
           })
           .eq("id", selectedTask.id)
+          .select()
+          .single()
 
-        if (taskError) throw taskError
+        if (updateError) {
+          console.error("[v0] ❌ Failed to update task assignment:", updateError)
+          throw updateError
+        }
 
-        const { error: statusError } = await supabase
-          .from("users")
-          .update({ bellman_status: "in_process" })
-          .eq("id", selectedAssignee)
+        console.log("[v0] ✅ Task assignment DB result:", updatedTask)
 
-        if (statusError) throw statusError
+        // Update assignee status to in_process if they're in_line
+        const assignee = allBellmen.find((b) => b.id === assigneeId)
+        if (assignee && assignee.bellman_status === "in_line") {
+          const { error: statusErr } = await supabase
+            .from("users")
+            .update({
+              bellman_status: "in_process",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", assigneeId)
 
-        const bellman = allBellmen.find((b) => b.id === selectedAssignee)!
-        await logActivity(
-          bellman.full_name,
-          selectedTask.title,
-          selectedTask.room_number || "N/A",
-          "assigned",
-          selectedTask.guest_name,
-          selectedTask.ticket_number,
-        )
+          if (statusErr) {
+            console.error("[v0] ❌ Error updating bellman status:", statusErr)
+            throw statusErr
+          }
+        }
 
-        toast.success("Task assigned successfully")
-        window.location.reload()
+        // Log activity with resolved name
+        const assigneeName = allBellmen.find((b) => b.id === assigneeId)?.full_name || "Unknown"
+        await supabase.from("activity_logs").insert({
+          user_id: assigneeId,
+          action: "task_assigned",
+          details: `Task assigned to ${assigneeName}`,
+          metadata: { task_id: selectedTask.id, assignee_id: assigneeId, assignee_name: assigneeName },
+        })
+
+        toast.success(`Task assigned to ${assigneeName}`)
+        console.log("[v0] ✅ Assigned task saved to DB with assigned_to:", assigneeId)
+        // no forced reload here — we rely on refreshTasks() or real-time channels elsewhere
       }
 
       setAssignedTaskIds((prev) => new Set([...prev, selectedTask.id]))
@@ -230,6 +257,10 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
     }
   }
 
+  /**
+   * assignNewTaskToBellman - when creating+assigning new tasks directly to a bellman
+   * (mostly unchanged, but we'll ensure returned row and status are handled)
+   */
   const assignNewTaskToBellman = async () => {
     if (!selectedBellman || !taskType) {
       toast.error("Please fill in all required fields")
@@ -302,7 +333,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
 
         console.log("[v0] Creating task in database...")
 
-        // Create the task in the database
+        // Create the task in the database and return the row (so assigned_to is set)
         const { data: newTask, error: createError } = await supabase
           .from("tasks")
           .insert({
@@ -314,6 +345,8 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
             created_by: user.id,
             assigned_to: selectedBellman.id,
             status: "in_progress",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           })
           .select()
           .single()
@@ -328,7 +361,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         // Update bellman status to in_process
         const { error: statusError } = await supabase
           .from("users")
-          .update({ bellman_status: "in_process" })
+          .update({ bellman_status: "in_process", updated_at: new Date().toISOString() })
           .eq("id", selectedBellman.id)
 
         if (statusError) {
@@ -347,7 +380,8 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
 
         console.log("[v0] ✅ Task assigned to database bellman successfully")
         toast.success("Task assigned successfully")
-        window.location.reload()
+        // prefer real-time refresh; but keep compatibility with existing reload behavior:
+        // window.location.reload()
       }
 
       // Reset form
@@ -366,16 +400,9 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
     }
   }
 
-  const handleCompletionChoice = (type: "completed" | "cancelled" | "empty_room") => {
-    setCompletionType(type)
-    if (type === "completed") {
-      completeTask(type, "bottom")
-    } else {
-      setShowCompletionDialog(false)
-      setShowPositionDialog(true)
-    }
-  }
-
+  /**
+   * completeTask - updated with robust fallback when currentTask is not found
+   */
   const completeTask = async (completionType: "completed" | "cancelled" | "empty_room", position: "top" | "bottom") => {
     if (!selectedBellman) return
 
@@ -383,6 +410,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
       const isLocalBellman = localBellmen.some((b) => b.id === selectedBellman.id)
 
       if (isLocalBellman) {
+        // Keep local bellman logic unchanged
         const bellman = localBellmen.find((b) => b.id === selectedBellman.id)!
 
         if (position === "top") {
@@ -425,6 +453,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         )
         toast.success(`Task ${completionType} - ${selectedBellman.full_name} moved to ${position} of line`)
       } else {
+        // For DB bellmen: try to find currentTask by assigned_to first
         const currentTask = inProgressTasks.find((task) => task.assigned_to === selectedBellman.id)
 
         if (currentTask) {
@@ -440,11 +469,17 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           console.log("[v0] Timestamp:", new Date().toISOString())
           console.log("-".repeat(80))
 
+          // Update the specific task row by id and return the updated row
           const { data: updateData, error: taskError } = await supabase
             .from("tasks")
-            .update({ status: completionType })
+            .update({
+              status: completionType,
+              completed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
             .eq("id", currentTask.id)
             .select()
+            .single()
 
           if (taskError) {
             console.error("[v0] ❌ DATABASE UPDATE FAILED:", taskError)
@@ -457,11 +492,32 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           console.log("=".repeat(80))
         } else {
           console.warn("[v0] ⚠️ No current task found for bellman:", selectedBellman.full_name)
+          console.log("[v0] Attempting fallback DB update by assigned_to...")
+
+          // Fallback: update any task that has this bellman as assigned_to
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from("tasks")
+            .update({
+              status: completionType,
+              completed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("assigned_to", selectedBellman.id)
+            .select()
+
+          if (fallbackError) {
+            console.error("[v0] ❌ FALLBACK UPDATE FAILED:", fallbackError)
+            throw fallbackError
+          }
+
+          console.log("[v0] ⚠️ FALLBACK UPDATE SUCCESSFUL, rows changed:", fallbackData?.length || 0)
+          console.log("[v0] Fallback updated rows:", JSON.stringify(fallbackData, null, 2))
         }
 
+        // Update bellman status in users table (your table is 'users')
         const { error: statusError } = await supabase
           .from("users")
-          .update({ bellman_status: "in_line" })
+          .update({ bellman_status: "in_line", updated_at: new Date().toISOString() })
           .eq("id", selectedBellman.id)
 
         if (statusError) {
@@ -481,8 +537,8 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         }
 
         toast.success(`Task ${completionType} - ${selectedBellman.full_name} back in line`)
-
-        window.location.reload()
+        // Prefer real-time updates. If you still want a reload to be safe, uncomment:
+        // window.location.reload()
       }
 
       setShowCompletionDialog(false)
@@ -501,6 +557,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
     toast.success(`${bellmanToRemove?.name} removed from line`)
   }
 
+  // UI rendering (mostly unchanged)
   return (
     <div className="p-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -748,20 +805,20 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           <div className="space-y-4">
             <p>How was this task completed?</p>
             <div className="space-y-2">
-              <Button className="w-full" onClick={() => handleCompletionChoice("completed")}>
+              <Button className="w-full" onClick={() => { setCompletionType("completed"); completeTask("completed", "bottom") }}>
                 Task Completed
               </Button>
               <Button
                 className="w-full bg-transparent"
                 variant="outline"
-                onClick={() => handleCompletionChoice("cancelled")}
+                onClick={() => { setCompletionType("cancelled"); setShowCompletionDialog(false); setShowPositionDialog(true) }}
               >
                 Task Cancelled
               </Button>
               <Button
                 className="w-full bg-transparent"
                 variant="outline"
-                onClick={() => handleCompletionChoice("empty_room")}
+                onClick={() => { setCompletionType("empty_room"); setShowCompletionDialog(false); setShowPositionDialog(true) }}
               >
                 Empty Room
               </Button>
