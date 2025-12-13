@@ -98,10 +98,11 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
         },
         async (payload) => {
           console.log("[v0] Real-time event received:", payload.eventType)
-          console.log("[v0] Task ID:", payload.new?.id || payload.old?.id)
+          const newRecord = payload.new as any
+          const oldRecord = payload.old as any
+          console.log("[v0] Task ID:", newRecord?.id || oldRecord?.id)
 
           if (payload.eventType === "INSERT") {
-            // Fetch the complete task with related data
             const { data: newTask } = await supabase
               .from("tasks")
               .select(
@@ -111,7 +112,7 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
                 creator:created_by(full_name, role)
               `,
               )
-              .eq("id", payload.new.id)
+              .eq("id", newRecord.id)
               .single()
 
             if (newTask) {
@@ -127,7 +128,6 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
               ])
             }
           } else if (payload.eventType === "UPDATE") {
-            // Fetch the complete updated task with related data
             const { data: updatedTask } = await supabase
               .from("tasks")
               .select(
@@ -137,10 +137,10 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
                 creator:created_by(full_name, role)
               `,
               )
-              .eq("id", payload.new.id)
+              .eq("id", newRecord.id)
               .single()
 
-            const oldTask = payload.old as Task
+            const oldTask = oldRecord as Task
 
             if (updatedTask) {
               console.log("[v0] Task updated:", updatedTask.title)
@@ -150,7 +150,6 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
                 prevTasks.map((task) => (task.id === updatedTask.id ? (updatedTask as Task) : task)),
               )
 
-              // Show notification for status changes
               if (oldTask.status !== updatedTask.status) {
                 let message = `Task updated: ${updatedTask.title}`
                 let type: "info" | "success" | "warning" = "info"
@@ -180,7 +179,7 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
               }
             }
           } else if (payload.eventType === "DELETE") {
-            const deletedTask = payload.old as Task
+            const deletedTask = oldRecord as Task
             console.log("[v0] Task deleted:", deletedTask.id)
 
             setTasks((prevTasks) => prevTasks.filter((task) => task.id !== deletedTask.id))
