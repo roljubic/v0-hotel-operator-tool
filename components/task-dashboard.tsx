@@ -84,40 +84,66 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
   }, [])
 
   useEffect(() => {
-    console.log("[v0] Setting up real-time subscription for task updates")
-    console.log("[v0] User:", user.full_name, "Role:", user.role)
+    console.log("[v0] Starting task polling (every 3 seconds)")
 
-    const channel = supabase
-      .channel("task-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tasks",
-        },
-        async (payload) => {
-          console.log("[v0] Real-time event received:", payload.eventType)
-          const newRecord = payload.new as any
-          const oldRecord = payload.old as any
-          console.log("[v0] Task ID:", newRecord?.id || oldRecord?.id)
+    const fetchTasks = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("tasks")
+          .select(
+            `
+            *,
+            assigned_user:assigned_to(full_name, role),
+            creator:created_by(full_name, role)
+          `,
+          )
+          .order("created_at", { ascending: false })
 
-          if (payload.eventType === "INSERT") {
-            const { data: newTask } = await supabase
-              .from("tasks")
-              .select(
-                `
-                *,
-                assigned_user:assigned_to(full_name, role),
-                creator:created_by(full_name, role)
-              `,
-              )
-              .eq("id", newRecord.id)
-              .single()
+        if (error) {
+          console.error("[v0] Error fetching tasks:", error)
+          return
+        }
 
-            if (newTask) {
-              console.log("[v0] New task created:", newTask.title)
-              setTasks((prevTasks) => [newTask as Task, ...prevTasks])
+        if (data) {
+          // Compare old and new tasks to show notifications
+          const oldTaskMap = new Map(tasks.map((t) => [t.id, t]))
+          const newTaskMap = new Map(data.map((t) => [t.id, t]))
+
+          // Check for status changes
+          data.forEach((newTask) => {
+            const oldTask = oldTaskMap.get(newTask.id)
+            if (oldTask && oldTask.status !== newTask.status) {
+              let message = `Task updated: ${newTask.title}`
+              let type: "info" | "success" | "warning" = "info"
+
+              if (newTask.status === "completed") {
+                message = `✅ Task completed: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                type = "success"
+              } else if (newTask.status === "cancelled") {
+                message = `❌ Task cancelled: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                type = "warning"
+              } else if (newTask.status === "empty_room") {
+                message = `🚪 Empty room: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                type = "info"
+              } else if (newTask.status === "in_progress") {
+                message = `🔄 Task started: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                type = "info"
+              }
+
+              setNotifications((prev) => [
+                ...prev,
+                {
+                  id: `${Date.now()}-${Math.random()}`,
+                  message,
+                  type,
+                },
+              ])
+            }
+          })
+
+          // Check for new tasks
+          data.forEach((newTask) => {
+            if (!oldTaskMap.has(newTask.id)) {
               setNotifications((prev) => [
                 ...prev,
                 {
@@ -127,83 +153,27 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
                 },
               ])
             }
-          } else if (payload.eventType === "UPDATE") {
-            const { data: updatedTask } = await supabase
-              .from("tasks")
-              .select(
-                `
-                *,
-                assigned_user:assigned_to(full_name, role),
-                creator:created_by(full_name, role)
-              `,
-              )
-              .eq("id", newRecord.id)
-              .single()
+          })
 
-            const oldTask = oldRecord as Task
-
-            if (updatedTask) {
-              console.log("[v0] Task updated:", updatedTask.title)
-              console.log("[v0] Old status:", oldTask.status, "New status:", updatedTask.status)
-
-              setTasks((prevTasks) =>
-                prevTasks.map((task) => (task.id === updatedTask.id ? (updatedTask as Task) : task)),
-              )
-
-              if (oldTask.status !== updatedTask.status) {
-                let message = `Task updated: ${updatedTask.title}`
-                let type: "info" | "success" | "warning" = "info"
-
-                if (updatedTask.status === "completed") {
-                  message = `✅ Task completed: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
-                  type = "success"
-                } else if (updatedTask.status === "cancelled") {
-                  message = `❌ Task cancelled: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
-                  type = "warning"
-                } else if (updatedTask.status === "empty_room") {
-                  message = `🚪 Empty room: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
-                  type = "info"
-                } else if (updatedTask.status === "in_progress") {
-                  message = `🔄 Task started: ${updatedTask.title} (Room ${updatedTask.room_number || "N/A"})`
-                  type = "info"
-                }
-
-                setNotifications((prev) => [
-                  ...prev,
-                  {
-                    id: `${Date.now()}-${Math.random()}`,
-                    message,
-                    type,
-                  },
-                ])
-              }
-            }
-          } else if (payload.eventType === "DELETE") {
-            const deletedTask = oldRecord as Task
-            console.log("[v0] Task deleted:", deletedTask.id)
-
-            setTasks((prevTasks) => prevTasks.filter((task) => task.id !== deletedTask.id))
-          }
-
+          setTasks(data as Task[])
           setLastUpdateTime(new Date().toLocaleTimeString())
-        },
-      )
-      .subscribe((status) => {
-        console.log("[v0] Subscription status:", status)
-        if (status === "SUBSCRIBED") {
-          console.log("[v0] ✅ Successfully subscribed to real-time updates")
-        } else if (status === "CHANNEL_ERROR") {
-          console.error("[v0] ❌ Subscription error - check database permissions")
-        } else if (status === "TIMED_OUT") {
-          console.error("[v0] ⏱️ Subscription timed out - retrying...")
         }
-      })
+      } catch (error) {
+        console.error("[v0] Error in polling:", error)
+      }
+    }
+
+    // Initial fetch
+    fetchTasks()
+
+    // Poll every 3 seconds
+    const interval = setInterval(fetchTasks, 3000)
 
     return () => {
-      console.log("[v0] Cleaning up real-time subscription")
-      supabase.removeChannel(channel)
+      console.log("[v0] Stopping task polling")
+      clearInterval(interval)
     }
-  }, [supabase, user.full_name, user.role])
+  }, [supabase])
 
   const handleSignOut = async () => {
     try {
@@ -305,7 +275,7 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
               </Badge>
               <div className="flex items-center space-x-2 text-green-600">
                 <RefreshCw className="h-3 w-3" />
-                <span className="text-xs">Real-time updates active</span>
+                <span className="text-xs">Auto-refresh every 3s</span>
               </div>
             </div>
             <div className="flex items-center space-x-4">
