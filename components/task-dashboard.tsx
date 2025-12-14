@@ -40,6 +40,7 @@ interface Task {
   updated_at: string
   assigned_user?: { full_name: string; role: string }
   creator?: { full_name: string; role: string }
+  hotel_id?: string
 }
 
 interface TaskDashboardProps {
@@ -85,9 +86,12 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
 
   useEffect(() => {
     console.log("[v0] Starting task polling (every 3 seconds)")
+    console.log("[v0] User hotel_id:", user.hotel_id)
 
     const fetchTasks = async () => {
       try {
+        console.log("[v0] Fetching tasks for hotel:", user.hotel_id)
+
         const { data, error } = await supabase
           .from("tasks")
           .select(
@@ -97,6 +101,7 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
             creator:created_by(full_name, role)
           `,
           )
+          .eq("hotel_id", user.hotel_id) // Filter by user's hotel
           .order("created_at", { ascending: false })
 
         if (error) {
@@ -105,6 +110,12 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
         }
 
         if (data) {
+          console.log("[v0] Fetched tasks count:", data.length)
+          console.log(
+            "[v0] Task statuses:",
+            data.map((t) => ({ id: t.id, status: t.status, room: t.room_number })),
+          )
+
           // Compare old and new tasks to show notifications
           const oldTaskMap = new Map(tasks.map((t) => [t.id, t]))
           const newTaskMap = new Map(data.map((t) => [t.id, t]))
