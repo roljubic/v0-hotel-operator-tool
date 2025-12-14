@@ -40,7 +40,6 @@ interface Task {
   updated_at: string
   assigned_user?: { full_name: string; role: string }
   creator?: { full_name: string; role: string }
-  hotel_id?: string
 }
 
 interface TaskDashboardProps {
@@ -65,10 +64,9 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const router = useRouter()
 
-  const [supabase] = useState(() => createClient())
-
   useEffect(() => {
     const fetchBellmen = async () => {
+      const supabase = createClient()
       const { data } = await supabase
         .from("users")
         .select("id, full_name")
@@ -85,70 +83,75 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
   }, [])
 
   useEffect(() => {
-    console.log("[v0] Starting task polling (every 3 seconds)")
-    console.log("[v0] User hotel_id:", user.hotel_id)
+    console.log("=".repeat(80))
+    console.log("[v0] 🔄 MANAGER/FRONT DESK DASHBOARD - Starting automatic task polling")
+    console.log("[v0] Polling interval: Every 3 seconds")
+    console.log("[v0] User:", user.full_name, "Role:", user.role)
+    console.log("=".repeat(80))
 
-    const fetchTasks = async () => {
+    const pollTasks = async () => {
       try {
-        console.log("[v0] Fetching tasks for hotel:", user.hotel_id)
+        setIsRefreshing(true)
+        const supabase = createClient()
 
-        const { data, error } = await supabase
+        console.log("[v0] 📡 Fetching latest tasks from database...")
+
+        const { data: latestTasks, error } = await supabase
           .from("tasks")
-          .select(
-            `
-            *,
-            assigned_user:assigned_to(full_name, role),
-            creator:created_by(full_name, role)
-          `,
-          )
-          .eq("hotel_id", user.hotel_id) // Filter by user's hotel
+          .select("*")
           .order("created_at", { ascending: false })
 
         if (error) {
-          console.error("[v0] Error fetching tasks:", error)
+          console.error("[v0] ❌ Error fetching tasks:", error)
           return
         }
 
-        if (data) {
-          console.log("[v0] Fetched tasks count:", data.length)
+        if (latestTasks) {
+          console.log(`[v0] ✅ Successfully fetched ${latestTasks.length} tasks`)
           console.log(
             "[v0] Task statuses:",
-            data.map((t) => ({ id: t.id, status: t.status, room: t.room_number })),
+            latestTasks.map((t) => ({ id: t.id.slice(0, 8), title: t.title, status: t.status })),
           )
 
           setTasks((prevTasks) => {
-            // Compare old and new tasks to show notifications
-            const oldTaskMap = new Map(prevTasks.map((t) => [t.id, t]))
+            console.log("[v0] 🔍 Comparing with previous tasks to detect changes...")
 
             // Check for status changes
-            data.forEach((newTask) => {
-              const oldTask = oldTaskMap.get(newTask.id)
+            latestTasks.forEach((newTask) => {
+              const oldTask = prevTasks.find((t) => t.id === newTask.id)
+
               if (oldTask && oldTask.status !== newTask.status) {
-                console.log(
-                  `[v0] Status change detected: Task ${newTask.id} changed from ${oldTask.status} to ${newTask.status}`,
-                )
+                console.log("=".repeat(80))
+                console.log("[v0] 🎉 STATUS CHANGE DETECTED!")
+                console.log("=".repeat(80))
+                console.log("[v0] Task ID:", newTask.id)
+                console.log("[v0] Title:", newTask.title)
+                console.log("[v0] Room:", newTask.room_number || "N/A")
+                console.log("[v0] Old Status:", oldTask.status)
+                console.log("[v0] New Status:", newTask.status)
+                console.log("[v0] Timestamp:", new Date().toISOString())
+                console.log("=".repeat(80))
 
                 let message = `Task updated: ${newTask.title}`
                 let type: "info" | "success" | "warning" = "info"
 
                 if (newTask.status === "completed") {
-                  message = `✅ Task completed: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                  message = `Task completed: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
                   type = "success"
                 } else if (newTask.status === "cancelled") {
-                  message = `❌ Task cancelled: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                  message = `Task cancelled: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
                   type = "warning"
                 } else if (newTask.status === "empty_room") {
-                  message = `🚪 Empty room: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                  type = "info"
-                } else if (newTask.status === "in_progress") {
-                  message = `🔄 Task started: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                  message = `Empty room: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
                   type = "info"
                 }
+
+                console.log("[v0] 🔔 Showing notification:", message)
 
                 setNotifications((prev) => [
                   ...prev,
                   {
-                    id: `${Date.now()}-${Math.random()}`,
+                    id: Date.now().toString() + Math.random(),
                     message,
                     type,
                   },
@@ -157,43 +160,44 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
             })
 
             // Check for new tasks
-            data.forEach((newTask) => {
-              if (!oldTaskMap.has(newTask.id)) {
-                console.log(`[v0] New task detected: ${newTask.id}`)
-                setNotifications((prev) => [
-                  ...prev,
-                  {
-                    id: `${Date.now()}-${Math.random()}`,
-                    message: `📋 New task: ${newTask.title} (Room ${newTask.room_number || "N/A"})`,
-                    type: "info",
-                  },
-                ])
-              }
-            })
+            const newTaskIds = latestTasks.map((t) => t.id)
+            const oldTaskIds = prevTasks.map((t) => t.id)
+            const addedTasks = latestTasks.filter((t) => !oldTaskIds.includes(t.id))
 
-            setLastUpdateTime(new Date().toLocaleTimeString())
-            return data as Task[]
+            if (addedTasks.length > 0) {
+              console.log(
+                `[v0] ➕ ${addedTasks.length} new task(s) detected:`,
+                addedTasks.map((t) => t.title),
+              )
+            }
+
+            return latestTasks
           })
+
+          setLastUpdateTime(new Date().toLocaleTimeString())
         }
       } catch (error) {
-        console.error("[v0] Error in polling:", error)
+        console.error("[v0] ❌ Polling error:", error)
+      } finally {
+        setIsRefreshing(false)
       }
     }
 
-    // Initial fetch
-    fetchTasks()
+    // Poll immediately on mount
+    pollTasks()
 
-    // Poll every 3 seconds
-    const interval = setInterval(fetchTasks, 3000)
+    // Then poll every 3 seconds
+    const interval = setInterval(pollTasks, 3000)
 
     return () => {
-      console.log("[v0] Stopping task polling")
+      console.log("[v0] 🛑 Stopping task polling")
       clearInterval(interval)
     }
-  }, [supabase, user.hotel_id]) // Added user.hotel_id to dependency array
+  }, [])
 
   const handleSignOut = async () => {
     try {
+      const supabase = createClient()
       await supabase.auth.signOut()
       router.push("/auth/login")
     } catch (error) {
@@ -291,8 +295,8 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
                 {user.role.replace("_", " ").toUpperCase()}
               </Badge>
               <div className="flex items-center space-x-2 text-green-600">
-                <RefreshCw className="h-3 w-3" />
-                <span className="text-xs">Auto-refresh every 3s</span>
+                <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
+                <span className="text-xs">Auto-refresh: {lastUpdateTime}</span>
               </div>
             </div>
             <div className="flex items-center space-x-4">
