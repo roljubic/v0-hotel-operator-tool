@@ -116,58 +116,64 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
             data.map((t) => ({ id: t.id, status: t.status, room: t.room_number })),
           )
 
-          // Compare old and new tasks to show notifications
-          const oldTaskMap = new Map(tasks.map((t) => [t.id, t]))
-          const newTaskMap = new Map(data.map((t) => [t.id, t]))
+          setTasks((prevTasks) => {
+            // Compare old and new tasks to show notifications
+            const oldTaskMap = new Map(prevTasks.map((t) => [t.id, t]))
 
-          // Check for status changes
-          data.forEach((newTask) => {
-            const oldTask = oldTaskMap.get(newTask.id)
-            if (oldTask && oldTask.status !== newTask.status) {
-              let message = `Task updated: ${newTask.title}`
-              let type: "info" | "success" | "warning" = "info"
+            // Check for status changes
+            data.forEach((newTask) => {
+              const oldTask = oldTaskMap.get(newTask.id)
+              if (oldTask && oldTask.status !== newTask.status) {
+                console.log(
+                  `[v0] Status change detected: Task ${newTask.id} changed from ${oldTask.status} to ${newTask.status}`,
+                )
 
-              if (newTask.status === "completed") {
-                message = `✅ Task completed: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                type = "success"
-              } else if (newTask.status === "cancelled") {
-                message = `❌ Task cancelled: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                type = "warning"
-              } else if (newTask.status === "empty_room") {
-                message = `🚪 Empty room: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                type = "info"
-              } else if (newTask.status === "in_progress") {
-                message = `🔄 Task started: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
-                type = "info"
+                let message = `Task updated: ${newTask.title}`
+                let type: "info" | "success" | "warning" = "info"
+
+                if (newTask.status === "completed") {
+                  message = `✅ Task completed: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                  type = "success"
+                } else if (newTask.status === "cancelled") {
+                  message = `❌ Task cancelled: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                  type = "warning"
+                } else if (newTask.status === "empty_room") {
+                  message = `🚪 Empty room: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                  type = "info"
+                } else if (newTask.status === "in_progress") {
+                  message = `🔄 Task started: ${newTask.title} (Room ${newTask.room_number || "N/A"})`
+                  type = "info"
+                }
+
+                setNotifications((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${Math.random()}`,
+                    message,
+                    type,
+                  },
+                ])
               }
+            })
 
-              setNotifications((prev) => [
-                ...prev,
-                {
-                  id: `${Date.now()}-${Math.random()}`,
-                  message,
-                  type,
-                },
-              ])
-            }
+            // Check for new tasks
+            data.forEach((newTask) => {
+              if (!oldTaskMap.has(newTask.id)) {
+                console.log(`[v0] New task detected: ${newTask.id}`)
+                setNotifications((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${Math.random()}`,
+                    message: `📋 New task: ${newTask.title} (Room ${newTask.room_number || "N/A"})`,
+                    type: "info",
+                  },
+                ])
+              }
+            })
+
+            setLastUpdateTime(new Date().toLocaleTimeString())
+            return data as Task[]
           })
-
-          // Check for new tasks
-          data.forEach((newTask) => {
-            if (!oldTaskMap.has(newTask.id)) {
-              setNotifications((prev) => [
-                ...prev,
-                {
-                  id: `${Date.now()}-${Math.random()}`,
-                  message: `📋 New task: ${newTask.title} (Room ${newTask.room_number || "N/A"})`,
-                  type: "info",
-                },
-              ])
-            }
-          })
-
-          setTasks(data as Task[])
-          setLastUpdateTime(new Date().toLocaleTimeString())
         }
       } catch (error) {
         console.error("[v0] Error in polling:", error)
@@ -184,7 +190,7 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
       console.log("[v0] Stopping task polling")
       clearInterval(interval)
     }
-  }, [supabase])
+  }, [supabase, user.hotel_id]) // Added user.hotel_id to dependency array
 
   const handleSignOut = async () => {
     try {
