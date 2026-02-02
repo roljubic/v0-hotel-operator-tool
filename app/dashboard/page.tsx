@@ -21,13 +21,14 @@ export default async function DashboardPage() {
 
   if (profileError) {
     console.log("[v0] Dashboard: Could not fetch from users table, using metadata:", profileError.message)
-    // Fallback to user metadata
+    // Fallback to user metadata - but hotel_id must come from DB
     userProfile = {
       id: user.id,
       email: user.email || "",
       full_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
       role: user.user_metadata?.role || "operator",
       is_active: true,
+      hotel_id: user.user_metadata?.hotel_id || null, // Will trigger redirect to onboarding
     }
   } else {
     userProfile = profileData

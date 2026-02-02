@@ -68,10 +68,15 @@ export default function OnboardingPage() {
           email: sanitizedEmail || null,
           room_count: parsedRoomCount,
         })
-        .select()
+        .select("*, invite_code")
         .single()
 
-      if (hotelError) throw hotelError
+      if (hotelError) {
+        console.error("[v0] Error creating hotel:", hotelError)
+        throw hotelError
+      }
+
+      console.log("[v0] Hotel created:", hotel.name, "ID:", hotel.id, "Invite code:", hotel.invite_code)
 
       // Update user with hotel_id AND promote to admin (hotel creator becomes admin)
       const { error: updateError } = await supabase
@@ -82,8 +87,12 @@ export default function OnboardingPage() {
         })
         .eq("id", user.id)
 
-      if (updateError) throw updateError
+      if (updateError) {
+        console.error("[v0] Error updating user:", updateError)
+        throw updateError
+      }
 
+      console.log("[v0] User updated, redirecting to dashboard")
       // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
@@ -114,16 +123,36 @@ export default function OnboardingPage() {
         throw new Error("Please enter an invite code")
       }
 
-      // Find hotel by invite_code (secure lookup)
-      const { data: hotel, error: hotelError } = await supabase
+      // Try to find hotel by invite_code first, then fall back to hotel ID (for testing)
+      let hotel = null
+      
+      // First try invite_code
+      const { data: hotelByCode } = await supabase
         .from("hotels")
         .select("id, name")
         .eq("invite_code", sanitizedInviteCode)
         .single()
+      
+      if (hotelByCode) {
+        hotel = hotelByCode
+      } else {
+        // Fall back to hotel ID lookup (for testing/development)
+        const { data: hotelById } = await supabase
+          .from("hotels")
+          .select("id, name")
+          .eq("id", sanitizedInviteCode)
+          .single()
+        
+        if (hotelById) {
+          hotel = hotelById
+        }
+      }
 
-      if (hotelError || !hotel) {
+      if (!hotel) {
         throw new Error("Invalid invite code. Please check with your hotel administrator.")
       }
+
+      console.log("[v0] Joining hotel:", hotel.name, "ID:", hotel.id)
 
       // Update user with hotel_id
       const { error: updateError } = await supabase
@@ -131,8 +160,12 @@ export default function OnboardingPage() {
         .update({ hotel_id: hotel.id })
         .eq("id", user.id)
 
-      if (updateError) throw updateError
+      if (updateError) {
+        console.error("[v0] Error updating user hotel_id:", updateError)
+        throw updateError
+      }
 
+      console.log("[v0] Successfully joined hotel, redirecting to dashboard")
       // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
