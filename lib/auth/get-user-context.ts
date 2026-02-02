@@ -6,6 +6,8 @@ export interface UserContext {
   hotelId: string | null
   role: string
   email: string
+  fullName: string
+  isSuperAdmin: boolean
 }
 
 export async function getUserContext(): Promise<UserContext | null> {
@@ -19,22 +21,25 @@ export async function getUserContext(): Promise<UserContext | null> {
     return null
   }
 
-  const { data: profile, error } = await supabase.from("users").select("hotel_id, role").eq("id", user.id).single()
+  const { data: profile, error } = await supabase
+    .from("users")
+    .select("hotel_id, role, full_name, is_super_admin")
+    .eq("id", user.id)
+    .single()
 
   if (error) {
-    console.log("[v0] Could not fetch user profile from users table, using metadata:", error.message)
-
-    // Fallback to user metadata if RLS policy fails
-    const role = user.user_metadata?.role || "operator"
+    // Fallback to user metadata if profile fetch fails
+    const role = user.user_metadata?.role || "bellman"
     const hotelId = user.user_metadata?.hotel_id || null
-
-    console.log("[v0] Using role from metadata:", role)
+    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User"
 
     return {
       userId: user.id,
       hotelId: hotelId,
       role: role,
       email: user.email!,
+      fullName: fullName,
+      isSuperAdmin: false,
     }
   }
 
@@ -47,6 +52,8 @@ export async function getUserContext(): Promise<UserContext | null> {
     hotelId: profile.hotel_id,
     role: profile.role,
     email: user.email!,
+    fullName: profile.full_name,
+    isSuperAdmin: profile.is_super_admin || false,
   }
 }
 
@@ -68,4 +75,23 @@ export async function requireHotel(): Promise<UserContext & { hotelId: string }>
   }
 
   return context as UserContext & { hotelId: string }
+}
+
+/**
+ * Validates that the current user belongs to the specified hotel
+ * Used for additional security checks in API routes
+ */
+export async function validateHotelAccess(hotelId: string): Promise<boolean> {
+  const context = await getUserContext()
+  
+  if (!context) {
+    return false
+  }
+  
+  // Super admins can access any hotel
+  if (context.isSuperAdmin) {
+    return true
+  }
+  
+  return context.hotelId === hotelId
 }

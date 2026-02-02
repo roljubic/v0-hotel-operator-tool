@@ -177,7 +177,7 @@ export function UserManagement({ currentUser, users: initialUsers }: UserManagem
         </div>
         <div className="flex gap-2">
           <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-40">
               <SelectValue placeholder="Role" />
             </SelectTrigger>
             <SelectContent>
@@ -185,6 +185,9 @@ export function UserManagement({ currentUser, users: initialUsers }: UserManagem
               <SelectItem value="admin">Admin</SelectItem>
               <SelectItem value="manager">Manager</SelectItem>
               <SelectItem value="operator">Operator</SelectItem>
+              <SelectItem value="phone_operator">Phone Operator</SelectItem>
+              <SelectItem value="front_desk">Front Desk</SelectItem>
+              <SelectItem value="bell_captain">Bell Captain</SelectItem>
               <SelectItem value="bell_staff">Bell Staff</SelectItem>
               <SelectItem value="bellman">Bellman</SelectItem>
             </SelectContent>
@@ -262,7 +265,7 @@ export function UserManagement({ currentUser, users: initialUsers }: UserManagem
               onSave={handleUpdateUser}
               onCancel={() => setIsEditDialogOpen(false)}
               isLoading={isLoading}
-              canEditRole={currentUser.role === "admin"}
+              currentUserRole={currentUser.role}
             />
           )}
         </DialogContent>
@@ -276,10 +279,16 @@ interface EditUserFormProps {
   onSave: (data: Partial<User>) => void
   onCancel: () => void
   isLoading: boolean
-  canEditRole: boolean
+  currentUserRole: string
 }
 
-function EditUserForm({ user, onSave, onCancel, isLoading, canEditRole }: EditUserFormProps) {
+// Define which roles each role can assign
+const ROLE_HIERARCHY: Record<string, string[]> = {
+  admin: ["admin", "manager", "operator", "phone_operator", "front_desk", "bell_captain", "bell_staff", "bellman"],
+  manager: ["operator", "phone_operator", "front_desk", "bell_captain", "bell_staff", "bellman"], // Managers cannot create admins or other managers
+}
+
+function EditUserForm({ user, onSave, onCancel, isLoading, currentUserRole }: EditUserFormProps) {
   const [formData, setFormData] = useState({
     full_name: user.full_name,
     email: user.email,
@@ -288,9 +297,29 @@ function EditUserForm({ user, onSave, onCancel, isLoading, canEditRole }: EditUs
     is_active: user.is_active,
   })
 
+  // Get the roles this user is allowed to assign
+  const allowedRoles = ROLE_HIERARCHY[currentUserRole] || []
+  const canEditRole = allowedRoles.length > 0
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave(formData)
+    
+    // Validate role change is allowed
+    if (formData.role !== user.role && !allowedRoles.includes(formData.role)) {
+      alert("You are not authorized to assign this role")
+      return
+    }
+    
+    // Sanitize inputs before saving
+    const sanitizedData = {
+      full_name: formData.full_name.trim().slice(0, 100),
+      email: formData.email.trim().toLowerCase().slice(0, 255),
+      phone: formData.phone.trim().slice(0, 20),
+      role: formData.role,
+      is_active: formData.is_active,
+    }
+    
+    onSave(sanitizedData)
   }
 
   return (
@@ -300,6 +329,7 @@ function EditUserForm({ user, onSave, onCancel, isLoading, canEditRole }: EditUs
         <Input
           id="full_name"
           value={formData.full_name}
+          maxLength={100}
           onChange={(e) => setFormData((prev) => ({ ...prev, full_name: e.target.value }))}
           required
         />
@@ -319,6 +349,7 @@ function EditUserForm({ user, onSave, onCancel, isLoading, canEditRole }: EditUs
         <Input
           id="phone"
           value={formData.phone}
+          maxLength={20}
           onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
         />
       </div>
@@ -330,13 +361,22 @@ function EditUserForm({ user, onSave, onCancel, isLoading, canEditRole }: EditUs
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="manager">Manager</SelectItem>
-              <SelectItem value="operator">Operator</SelectItem>
-              <SelectItem value="bell_staff">Bell Staff</SelectItem>
-              <SelectItem value="bellman">Bellman</SelectItem>
+              {/* Only show roles the current user is allowed to assign */}
+              {allowedRoles.includes("admin") && <SelectItem value="admin">Admin</SelectItem>}
+              {allowedRoles.includes("manager") && <SelectItem value="manager">Manager</SelectItem>}
+              {allowedRoles.includes("operator") && <SelectItem value="operator">Operator</SelectItem>}
+              {allowedRoles.includes("phone_operator") && <SelectItem value="phone_operator">Phone Operator</SelectItem>}
+              {allowedRoles.includes("front_desk") && <SelectItem value="front_desk">Front Desk</SelectItem>}
+              {allowedRoles.includes("bell_captain") && <SelectItem value="bell_captain">Bell Captain</SelectItem>}
+              {allowedRoles.includes("bell_staff") && <SelectItem value="bell_staff">Bell Staff</SelectItem>}
+              {allowedRoles.includes("bellman") && <SelectItem value="bellman">Bellman</SelectItem>}
             </SelectContent>
           </Select>
+          {currentUserRole === "manager" && (
+            <p className="text-xs text-gray-500 mt-1">
+              Note: Only admins can assign admin or manager roles.
+            </p>
+          )}
         </div>
       )}
       <div className="flex items-center space-x-2">
