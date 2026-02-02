@@ -7,17 +7,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Info } from "lucide-react"
 
 export default function SignupPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
-  const [role, setRole] = useState("")
   const [phone, setPhone] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -29,23 +27,37 @@ export default function SignupPage() {
     setIsLoading(true)
     setError(null)
 
-    if (!role) {
-      setError("Please select a role")
+    // Validate password strength
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long")
       setIsLoading(false)
       return
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address")
+      setIsLoading(false)
+      return
+    }
+
+    // Sanitize inputs
+    const sanitizedFullName = fullName.trim().slice(0, 100)
+    const sanitizedPhone = phone.trim().slice(0, 20)
+
     try {
       const { error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
           emailRedirectTo:
             process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/onboarding`,
           data: {
-            full_name: fullName,
-            role: role,
-            phone: phone,
+            full_name: sanitizedFullName,
+            // Role is always 'bellman' (lowest privilege) - admins can elevate later
+            role: "bellman",
+            phone: sanitizedPhone,
           },
         },
       })
@@ -85,6 +97,7 @@ export default function SignupPage() {
                   type="text"
                   placeholder="John Smith"
                   required
+                  maxLength={100}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                 />
@@ -101,27 +114,12 @@ export default function SignupPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Select value={role} onValueChange={setRole} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bellman">Bellman</SelectItem>
-                    <SelectItem value="bell_captain">Bell Captain</SelectItem>
-                    <SelectItem value="phone_operator">Phone Operator</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="front_desk">Front Desk</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="phone">Phone (Optional)</Label>
                 <Input
                   id="phone"
                   type="tel"
                   placeholder="+1 (555) 123-4567"
+                  maxLength={20}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                 />
@@ -132,10 +130,20 @@ export default function SignupPage() {
                   id="password"
                   type="password"
                   required
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                <p className="text-xs text-gray-500">Must be at least 8 characters</p>
               </div>
+              
+              <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <p>
+                  New accounts start with basic access. Your hotel administrator can update your role and permissions after you join.
+                </p>
+              </div>
+
               {error && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Creating account..." : "Create Account"}

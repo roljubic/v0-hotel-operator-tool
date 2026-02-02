@@ -43,25 +43,44 @@ export default function OnboardingPage() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error("Not authenticated")
 
+      // Sanitize and validate inputs
+      const sanitizedHotelName = hotelName.trim().slice(0, 100)
+      const sanitizedCity = city.trim().slice(0, 100)
+      const sanitizedCountry = country.trim().slice(0, 100)
+      const sanitizedAddress = address.trim().slice(0, 200)
+      const sanitizedPhone = phone.trim().slice(0, 20)
+      const sanitizedEmail = email.trim().toLowerCase().slice(0, 100)
+      const parsedRoomCount = Math.max(0, Math.min(10000, Number.parseInt(roomCount) || 0))
+
+      if (!sanitizedHotelName || !sanitizedCity || !sanitizedCountry) {
+        throw new Error("Hotel name, city, and country are required")
+      }
+
       // Create hotel
       const { data: hotel, error: hotelError } = await supabase
         .from("hotels")
         .insert({
-          name: hotelName,
-          address,
-          city,
-          country,
-          phone,
-          email,
-          room_count: Number.parseInt(roomCount) || 0,
+          name: sanitizedHotelName,
+          address: sanitizedAddress || null,
+          city: sanitizedCity,
+          country: sanitizedCountry,
+          phone: sanitizedPhone || null,
+          email: sanitizedEmail || null,
+          room_count: parsedRoomCount,
         })
         .select()
         .single()
 
       if (hotelError) throw hotelError
 
-      // Update user with hotel_id
-      const { error: updateError } = await supabase.from("users").update({ hotel_id: hotel.id }).eq("id", user.id)
+      // Update user with hotel_id AND promote to admin (hotel creator becomes admin)
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ 
+          hotel_id: hotel.id,
+          role: "admin" // Hotel creator becomes admin
+        })
+        .eq("id", user.id)
 
       if (updateError) throw updateError
 
@@ -88,17 +107,29 @@ export default function OnboardingPage() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error("Not authenticated")
 
-      // Find hotel by invite code (using hotel ID as invite code for now)
+      // Sanitize invite code
+      const sanitizedInviteCode = inviteCode.trim().toLowerCase().slice(0, 20)
+      
+      if (!sanitizedInviteCode) {
+        throw new Error("Please enter an invite code")
+      }
+
+      // Find hotel by invite_code (secure lookup)
       const { data: hotel, error: hotelError } = await supabase
         .from("hotels")
-        .select("id")
-        .eq("id", inviteCode)
+        .select("id, name")
+        .eq("invite_code", sanitizedInviteCode)
         .single()
 
-      if (hotelError) throw new Error("Invalid invite code")
+      if (hotelError || !hotel) {
+        throw new Error("Invalid invite code. Please check with your hotel administrator.")
+      }
 
       // Update user with hotel_id
-      const { error: updateError } = await supabase.from("users").update({ hotel_id: hotel.id }).eq("id", user.id)
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ hotel_id: hotel.id })
+        .eq("id", user.id)
 
       if (updateError) throw updateError
 

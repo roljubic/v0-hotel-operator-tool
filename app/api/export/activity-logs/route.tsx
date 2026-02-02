@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { format } from "date-fns"
+import { 
+  escapeHtml, 
+  sanitizeString, 
+  validateExportRequest,
+  checkRateLimit 
+} from "@/lib/validation"
 
 interface ActivityLog {
   id: string
@@ -23,6 +29,7 @@ interface ExportFilters {
 
 interface UserProfile {
   role: string
+  hotel_id: string
 }
 
 export async function POST(request: NextRequest) {
@@ -38,16 +45,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Verify user has permission to export logs
-    const { data: userProfile } = (await supabase.from("users").select("role").eq("id", user.id).single()) as {
-      data: UserProfile | null
+    // Rate limiting - 10 exports per minute per user
+    const rateLimit = checkRateLimit(`export:${user.id}`, 10, 60000)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: `Rate limited. Try again in ${rateLimit.retryAfter} seconds` },
+        { status: 429 }
+      )
     }
+
+    // Verify user has permission to export logs
+    const { data: userProfile } = (await supabase
+      .from("users")
+      .select("role, hotel_id")
+      .eq("id", user.id)
+      .single()) as { data: UserProfile | null }
 
     if (!userProfile || !["admin", "manager", "operator"].includes(userProfile.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    const { logs, filters }: { logs: ActivityLog[]; filters: ExportFilters } = await request.json()
+    // Parse and validate request body
+    let requestBody: unknown
+    try {
+      requestBody = await request.json()
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+    }
+
+    const validation = validateExportRequest(requestBody)
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.error }, { status: 400 })
+    }
+
+    const { logs, filters } = requestBody as { logs: ActivityLog[]; filters: ExportFilters }
+
+    // Sanitize filter values
+    const sanitizedFilters = {
+      searchTerm: sanitizeString(filters?.searchTerm, 100, ""),
+      actionFilter: sanitizeString(filters?.actionFilter, 50, "all"),
+      userFilter: sanitizeString(filters?.userFilter, 50, "all"),
+    }
 
     // Generate PDF content (simplified HTML for demonstration)
     const htmlContent = `
@@ -72,9 +110,9 @@ export async function POST(request: NextRequest) {
           
           <div class="filters">
             <h3>Applied Filters:</h3>
-            <p><strong>Search:</strong> ${filters.searchTerm || "None"}</p>
-            <p><strong>Action:</strong> ${filters.actionFilter === "all" ? "All Actions" : filters.actionFilter}</p>
-            <p><strong>User:</strong> ${filters.userFilter === "all" ? "All Users" : "Filtered"}</p>
+            <p><strong>Search:</strong> ${escapeHtml(sanitizedFilters.searchTerm) || "None"}</p>
+            <p><strong>Action:</strong> ${sanitizedFilters.actionFilter === "all" ? "All Actions" : escapeHtml(sanitizedFilters.actionFilter)}</p>
+            <p><strong>User:</strong> ${sanitizedFilters.userFilter === "all" ? "All Users" : "Filtered"}</p>
           </div>
 
           <div class="logs">
@@ -84,13 +122,13 @@ export async function POST(request: NextRequest) {
                 (log: ActivityLog) => `
               <div class="log-item">
                 <div>
-                  <span class="log-action">${log.action.replace("_", " ").toUpperCase()}</span>
-                  <strong>${log.description}</strong>
+                  <span class="log-action">${escapeHtml(String(log.action || "").replace("_", " ").toUpperCase())}</span>
+                  <strong>${escapeHtml(String(log.description || ""))}</strong>
                 </div>
                 <div class="log-meta">
-                  ${log.user?.full_name || "Unknown User"} • 
+                  ${escapeHtml(String(log.user?.full_name || "Unknown User"))} • 
                   ${format(new Date(log.created_at), "MMM d, yyyy h:mm a")}
-                  ${log.task?.title ? ` • Task: ${log.task.title}` : ""}
+                  ${log.task?.title ? ` • Task: ${escapeHtml(String(log.task.title))}` : ""}
                 </div>
               </div>
             `,

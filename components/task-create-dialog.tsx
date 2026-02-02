@@ -18,6 +18,7 @@ interface User {
   role: string
   phone?: string
   is_active: boolean
+  hotel_id?: string
 }
 
 interface Task {
@@ -71,15 +72,31 @@ export function TaskCreateDialog({ isOpen, onClose, onTaskCreated, currentUser }
       const supabase = createClient()
 
       try {
+        // Validate required fields
+        if (!formData.title) {
+          alert("Please select a task type")
+          setIsLoading(false)
+          return
+        }
+
+        // Sanitize inputs
+        const sanitizedTitle = formData.title.trim().slice(0, 100)
+        const sanitizedGuestName = formData.guest_name?.trim().slice(0, 100) || null
+        const sanitizedRoomNumber = formData.room_number?.trim().slice(0, 20) || null
+        const sanitizedDescription = formData.description?.trim().slice(0, 1000) || null
+        const sanitizedTicketNumber = formData.ticket_number?.trim().slice(0, 50) || null
+
         const taskToInsert = {
-          title: formData.title,
-          description: formData.description || null,
+          title: sanitizedTitle,
+          description: sanitizedDescription,
           priority: "medium" as const,
           status: "pending" as const,
           category: "guest_service" as const,
-          guest_name: formData.guest_name || null,
-          room_number: formData.room_number || null,
+          guest_name: sanitizedGuestName,
+          room_number: sanitizedRoomNumber,
+          ticket_number: sanitizedTicketNumber,
           created_by: currentUser.id,
+          hotel_id: currentUser.hotel_id, // Required for multi-tenancy
         }
 
         console.log("[v0] Inserting task:", taskToInsert)
