@@ -16,6 +16,11 @@ export default async function MyTasksPage() {
 
   const { data: userProfile } = await supabase.from("users").select("*").eq("id", user.id).single()
 
+  // Users must have a hotel assigned
+  if (!userProfile?.hotel_id) {
+    redirect("/auth/onboarding")
+  }
+
   if (!userProfile || !["bell_staff", "bellman"].includes(userProfile.role)) {
     redirect("/dashboard")
   }

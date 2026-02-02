@@ -33,7 +33,13 @@ export default async function BellmanDashboardPage() {
     userProfile = profileData
   }
 
-  console.log("[v0] Bellman Dashboard: User role:", userProfile?.role)
+  console.log("[v0] Bellman Dashboard: User role:", userProfile?.role, "hotel_id:", userProfile?.hotel_id)
+
+  // Users must have a hotel assigned
+  if (!userProfile?.hotel_id) {
+    console.log("[v0] Bellman Dashboard: No hotel_id, redirecting to onboarding")
+    redirect("/auth/onboarding")
+  }
 
   if (!userProfile || userProfile.role !== "bellman") {
     console.log("[v0] Bellman Dashboard: Access denied, redirecting to main dashboard")

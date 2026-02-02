@@ -38,7 +38,13 @@ export default async function DashboardPage() {
     redirect("/auth/login")
   }
 
-  console.log("[v0] Dashboard: User role:", userProfile.role)
+  console.log("[v0] Dashboard: User role:", userProfile.role, "hotel_id:", userProfile.hotel_id)
+
+  // Users must have a hotel assigned to access the dashboard
+  if (!userProfile.hotel_id) {
+    console.log("[v0] Dashboard: User has no hotel_id, redirecting to onboarding")
+    redirect("/auth/onboarding")
+  }
 
   if (userProfile.role === "super_admin") {
     redirect("/admin")
