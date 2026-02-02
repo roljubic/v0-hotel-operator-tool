@@ -67,6 +67,7 @@ export function TaskCreateDialog({ isOpen, onClose, onTaskCreated, currentUser }
 
     console.log("[v0] Creating task with data:", formData)
     console.log("[v0] Current user:", currentUser)
+    console.log("[v0] Current user hotel_id:", currentUser.hotel_id)
 
     startTransition(async () => {
       const supabase = createClient()
@@ -77,6 +78,33 @@ export function TaskCreateDialog({ isOpen, onClose, onTaskCreated, currentUser }
           alert("Please select a task type")
           setIsLoading(false)
           return
+        }
+
+        // Check if user has a hotel_id - if not, fetch it from the database
+        let hotelId = currentUser.hotel_id
+        if (!hotelId) {
+          console.log("[v0] No hotel_id in currentUser, fetching from database...")
+          const { data: userProfile, error: profileError } = await supabase
+            .from("users")
+            .select("hotel_id")
+            .eq("id", currentUser.id)
+            .single()
+          
+          if (profileError) {
+            console.error("[v0] Error fetching user profile:", profileError)
+            alert("Could not verify your hotel. Please refresh the page and try again.")
+            setIsLoading(false)
+            return
+          }
+
+          hotelId = userProfile?.hotel_id
+          console.log("[v0] Fetched hotel_id from database:", hotelId)
+
+          if (!hotelId) {
+            alert("You must be assigned to a hotel before creating tasks. Please complete the onboarding process.")
+            setIsLoading(false)
+            return
+          }
         }
 
         // Sanitize inputs
@@ -96,7 +124,7 @@ export function TaskCreateDialog({ isOpen, onClose, onTaskCreated, currentUser }
           room_number: sanitizedRoomNumber,
           ticket_number: sanitizedTicketNumber,
           created_by: currentUser.id,
-          hotel_id: currentUser.hotel_id, // Required for multi-tenancy
+          hotel_id: hotelId, // Required for multi-tenancy - use fetched value if needed
         }
 
         console.log("[v0] Inserting task:", taskToInsert)
