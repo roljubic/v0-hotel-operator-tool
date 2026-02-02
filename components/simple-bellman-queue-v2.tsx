@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,8 +46,10 @@ interface LocalBellman {
   ticketNumber?: string
 }
 
-export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks }: SimpleBellmanQueueProps) {
+export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks: initialInProgressTasks }: SimpleBellmanQueueProps) {
   const [newBellmanName, setNewBellmanName] = useState("")
+  // Track in-progress tasks with state so they update in real-time
+  const [currentInProgressTasks, setCurrentInProgressTasks] = useState<Task[]>(initialInProgressTasks)
   const [showAssignDialog, setShowAssignDialog] = useState(false)
   const [showCompletionDialog, setShowCompletionDialog] = useState(false)
   const [showTaskAssignDialog, setShowTaskAssignDialog] = useState(false)
@@ -84,6 +86,31 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
       localStorage.setItem("localBellmen", JSON.stringify(localBellmen))
     }
   }, [localBellmen])
+
+  // Poll for in-progress tasks to keep them up-to-date
+  useEffect(() => {
+    const fetchInProgressTasks = async () => {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("status", "in_progress")
+
+      if (error) {
+        console.error("[v0] Error fetching in-progress tasks:", error)
+        return
+      }
+
+      if (data) {
+        setCurrentInProgressTasks(data)
+      }
+    }
+
+    // Fetch immediately and then every 3 seconds
+    fetchInProgressTasks()
+    const interval = setInterval(fetchInProgressTasks, 3000)
+
+    return () => clearInterval(interval)
+  }, [supabase])
 
   const addBellmanToLine = () => {
     if (!newBellmanName.trim()) {
@@ -425,7 +452,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         )
         toast.success(`Task ${completionType} - ${selectedBellman.full_name} moved to ${position} of line`)
       } else {
-        const currentTask = inProgressTasks.find((task) => task.assigned_to === selectedBellman.id)
+        const currentTask = currentInProgressTasks.find((task) => task.assigned_to === selectedBellman.id)
 
         if (currentTask) {
           console.log("=".repeat(80))
@@ -667,7 +694,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
               ))}
 
             {inProcessBellmen.map((bellman) => {
-              const currentTask = inProgressTasks.find((task) => task.assigned_to === bellman.id)
+              const currentTask = currentInProgressTasks.find((task) => task.assigned_to === bellman.id)
               return (
                 <div key={bellman.id} className="p-3 border rounded-lg bg-orange-50">
                   <div className="flex items-start justify-between">
