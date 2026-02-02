@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
+import { Wifi, WifiOff } from "lucide-react"
 
 interface Task {
   id: string
@@ -34,6 +35,11 @@ interface SimpleBellmanQueueProps {
   pendingTasks: Task[]
   allBellmen: Bellman[]
   inProgressTasks: Task[]
+  currentUser: {
+    id: string
+    hotel_id?: string
+    role: string
+  }
 }
 
 interface LocalBellman {
@@ -46,10 +52,11 @@ interface LocalBellman {
   ticketNumber?: string
 }
 
-export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks: initialInProgressTasks }: SimpleBellmanQueueProps) {
+export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks: initialInProgressTasks, currentUser }: SimpleBellmanQueueProps) {
   const [newBellmanName, setNewBellmanName] = useState("")
   // Track in-progress tasks with state so they update in real-time
   const [currentInProgressTasks, setCurrentInProgressTasks] = useState<Task[]>(initialInProgressTasks)
+  const [currentPendingTasks, setCurrentPendingTasks] = useState<Task[]>(pendingTasks)
   const [showAssignDialog, setShowAssignDialog] = useState(false)
   const [showCompletionDialog, setShowCompletionDialog] = useState(false)
   const [showTaskAssignDialog, setShowTaskAssignDialog] = useState(false)
@@ -66,6 +73,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
   const [description, setDescription] = useState("")
   const [guestName, setGuestName] = useState("")
   const [ticketNumber, setTicketNumber] = useState("")
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false)
   const [localBellmen, setLocalBellmen] = useState<LocalBellman[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("localBellmen")
@@ -79,7 +87,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
   const inLineBellmen = allBellmen.filter((b) => b.bellman_status === "in_line")
   const inProcessBellmen = allBellmen.filter((b) => b.bellman_status === "in_process")
 
-  const availablePendingTasks = pendingTasks.filter((task) => !assignedTaskIds.has(task.id))
+  const availablePendingTasks = currentPendingTasks.filter((task) => !assignedTaskIds.has(task.id))
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -87,29 +95,65 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
     }
   }, [localBellmen])
 
-  // Poll for in-progress tasks to keep them up-to-date
+  // Use Supabase Realtime instead of polling
   useEffect(() => {
-    const fetchInProgressTasks = async () => {
-      const { data, error } = await supabase
-        .from("tasks")
-        .select("*")
-        .eq("status", "in_progress")
+    const channel = supabase
+      .channel("bellman-queue-tasks")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+        },
+        async (payload) => {
+          if (payload.eventType === "INSERT") {
+            const newTask = payload.new as Task
+            if (newTask.status === "pending") {
+              setCurrentPendingTasks((prev) => [newTask, ...prev])
+            } else if (newTask.status === "in_progress") {
+              setCurrentInProgressTasks((prev) => [newTask, ...prev])
+            }
+          } else if (payload.eventType === "UPDATE") {
+            const updatedTask = payload.new as Task
+            // Handle status changes
+            if (updatedTask.status === "in_progress") {
+              setCurrentPendingTasks((prev) => prev.filter((t) => t.id !== updatedTask.id))
+              setCurrentInProgressTasks((prev) => {
+                const exists = prev.find((t) => t.id === updatedTask.id)
+                if (exists) {
+                  return prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+                }
+                return [updatedTask, ...prev]
+              })
+            } else if (updatedTask.status === "pending") {
+              setCurrentInProgressTasks((prev) => prev.filter((t) => t.id !== updatedTask.id))
+              setCurrentPendingTasks((prev) => {
+                const exists = prev.find((t) => t.id === updatedTask.id)
+                if (exists) {
+                  return prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+                }
+                return [updatedTask, ...prev]
+              })
+            } else {
+              // Task completed, cancelled, or empty_room - remove from both lists
+              setCurrentPendingTasks((prev) => prev.filter((t) => t.id !== updatedTask.id))
+              setCurrentInProgressTasks((prev) => prev.filter((t) => t.id !== updatedTask.id))
+            }
+          } else if (payload.eventType === "DELETE") {
+            const deletedId = (payload.old as { id: string }).id
+            setCurrentPendingTasks((prev) => prev.filter((t) => t.id !== deletedId))
+            setCurrentInProgressTasks((prev) => prev.filter((t) => t.id !== deletedId))
+          }
+        }
+      )
+      .subscribe((status) => {
+        setIsRealtimeConnected(status === "SUBSCRIBED")
+      })
 
-      if (error) {
-        console.error("[v0] Error fetching in-progress tasks:", error)
-        return
-      }
-
-      if (data) {
-        setCurrentInProgressTasks(data)
-      }
+    return () => {
+      supabase.removeChannel(channel)
     }
-
-    // Fetch immediately and then every 3 seconds
-    fetchInProgressTasks()
-    const interval = setInterval(fetchInProgressTasks, 3000)
-
-    return () => clearInterval(interval)
   }, [supabase])
 
   const addBellmanToLine = () => {
@@ -171,6 +215,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           guest_name: guestName || null,
           ticket_number: ticketNumber || null,
           timestamp: new Date().toISOString(),
+          hotel_id: currentUser.hotel_id, // Required for multi-tenancy RLS
         })
 
         if (insertError) throw insertError
@@ -329,7 +374,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
 
         console.log("[v0] Creating task in database...")
 
-        // Create the task in the database
+        // Create the task in the database with hotel_id for multi-tenancy
         const { data: newTask, error: createError } = await supabase
           .from("tasks")
           .insert({
@@ -341,6 +386,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
             created_by: user.id,
             assigned_to: selectedBellman.id,
             status: "in_progress",
+            hotel_id: currentUser.hotel_id, // Required for multi-tenancy
           })
           .select()
           .single()
@@ -530,14 +576,27 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
 
   return (
     <div className="p-6">
+      {/* Connection Status */}
+      <div className="flex justify-end mb-4">
+        {isRealtimeConnected ? (
+          <div className="flex items-center gap-2 text-green-600 text-sm">
+            <Wifi className="h-4 w-4" />
+            <span>Live</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-yellow-600 text-sm">
+            <WifiOff className="h-4 w-4" />
+            <span>Connecting...</span>
+          </div>
+        )}
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Pending Tasks */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span>📋</span>
-                Pending Tasks ({availablePendingTasks.length})
+                <span>Pending Tasks ({availablePendingTasks.length})</span>
               </div>
             </CardTitle>
           </CardHeader>

@@ -35,6 +35,7 @@ interface CurrentUser {
   full_name: string
   role: "admin" | "manager" | "operator" | "bell_staff" | "bellman"
   email: string
+  hotel_id?: string
 }
 
 interface TaskCardProps {
@@ -156,6 +157,7 @@ export function TaskCard({ task, currentUser, onTaskUpdate }: TaskCardProps) {
           old_value: task.status,
           new_value: newStatus,
           description: `Status changed from ${task.status} to ${newStatus}`,
+          hotel_id: currentUser.hotel_id, // Required for multi-tenancy RLS
         })
       } catch (error) {
         console.error("Error updating task:", error)

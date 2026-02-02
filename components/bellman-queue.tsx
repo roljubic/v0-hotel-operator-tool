@@ -97,7 +97,7 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
         {
           event: "*",
           schema: "public",
-          table: "user_profiles",
+          table: "users",
         },
         () => {
           loadBellmenStatus()
@@ -112,8 +112,9 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
 
   const loadBellmenStatus = async () => {
     try {
+      // Use 'users' table instead of 'user_profiles' - RLS will auto-filter by hotel_id
       const { data: bellmenData } = await supabase
-        .from("user_profiles")
+        .from("users")
         .select("id, full_name, bellman_status, updated_at")
         .eq("role", "bellman")
         .order("full_name")
@@ -129,9 +130,9 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
         )
 
         // Set current user's status
-        const currentUser = bellmenData.find((b) => b.id === user.id)
-        if (currentUser) {
-          setMyStatus(currentUser.bellman_status || "off_duty")
+        const currentUserData = bellmenData.find((b) => b.id === user.id)
+        if (currentUserData) {
+          setMyStatus(currentUserData.bellman_status || "off_duty")
         }
       }
     } catch (error) {
@@ -143,10 +144,9 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
     startTransition(() => {
       const performStatusUpdate = async () => {
         try {
-          console.log("[v0] Updating bellman status to:", newStatus)
-
+          // Use 'users' table instead of 'user_profiles'
           const { error } = await supabase
-            .from("user_profiles")
+            .from("users")
             .update({
               bellman_status: newStatus,
               updated_at: new Date().toISOString(),
@@ -154,16 +154,14 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
             .eq("id", user.id)
 
           if (error) {
-            console.error("[v0] Error updating status:", error)
             throw error
           }
 
-          // Log activity
+          // Log activity - hotel_id will be set by RLS
           await supabase.from("activity_logs").insert({
             user_id: user.id,
             action: "status_change",
-            details: `Bellman changed status to: ${newStatus}`,
-            metadata: { new_status: newStatus },
+            description: `Bellman changed status to: ${newStatus}`,
           })
 
           setMyStatus(newStatus)
@@ -314,6 +312,13 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
     startTransition(() => {
       const performCreateTask = async () => {
         try {
+          // Get current user's hotel_id for multi-tenancy
+          const { data: userData } = await supabase
+            .from("users")
+            .select("hotel_id")
+            .eq("id", user.id)
+            .single()
+
           const { error } = await supabase.from("tasks").insert({
             title: newTask.title,
             description: newTask.description,
@@ -323,6 +328,7 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
             priority: newTask.priority,
             status: "pending",
             created_by: user.id,
+            hotel_id: userData?.hotel_id, // Required for multi-tenancy
             created_at: new Date().toISOString(),
           })
 
@@ -380,7 +386,7 @@ export function BellmanQueue({ user, availableTasks: initialAvailable, myTasks: 
           const assignee = bellmen.find((b) => b.id === assigneeId)
           if (assignee && assignee.status === "in_line") {
             await supabase
-              .from("user_profiles")
+              .from("users")
               .update({
                 bellman_status: "in_process",
                 updated_at: new Date().toISOString(),

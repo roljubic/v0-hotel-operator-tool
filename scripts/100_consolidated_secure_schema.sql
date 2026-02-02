@@ -100,7 +100,19 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
 );
 
 -- =============================================================================
--- STEP 6: Create User Settings Table
+-- STEP 6: Create Task Comments Table
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.task_comments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  task_id UUID NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =============================================================================
+-- STEP 7: Create User Settings Table
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS public.user_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -129,10 +141,10 @@ CREATE INDEX IF NOT EXISTS idx_tasks_priority ON public.tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON public.tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_ticket_number ON public.tasks(ticket_number);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_hotel_id ON public.activity_logs(hotel_id);
-CREATE INDEX IF NOT EXISTS idx_activity_logs_task_id ON public.activity_logs(task_id);
-CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON public.activity_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_bellman_name ON public.activity_logs(bellman_name);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON public.activity_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_status ON public.activity_logs(status);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_task_type ON public.activity_logs(task_type);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_hotel_id ON public.subscriptions(hotel_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_customer ON public.subscriptions(stripe_customer_id);
 CREATE INDEX IF NOT EXISTS idx_user_settings_hotel_id ON public.user_settings(hotel_id);
@@ -457,11 +469,13 @@ CREATE TRIGGER update_subscriptions_updated_at BEFORE UPDATE ON public.subscript
 CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON public.user_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================================================================
--- STEP 22: Enable Realtime for Tables
+-- STEP 22: Enable Realtime for Tables (Skip if already exists)
 -- =============================================================================
-ALTER PUBLICATION supabase_realtime ADD TABLE public.tasks;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.activity_logs;
+-- Note: The tables may already be part of supabase_realtime publication.
+-- Run these manually if realtime is not working:
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.tasks;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE public.activity_logs;
 
 -- =============================================================================
 -- DONE
