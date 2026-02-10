@@ -50,6 +50,7 @@ interface LocalBellman {
   roomNumber?: string
   guestName?: string
   ticketNumber?: string
+  assignedTaskId?: string
 }
 
 export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks: initialInProgressTasks, currentUser }: SimpleBellmanQueueProps) {
@@ -237,6 +238,15 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
 
       if (isLocalBellman) {
         const bellman = localBellmen.find((b) => b.id === selectedAssignee)!
+
+        // Update the database task to in_progress so the manager sees the status change
+        const { error: taskError } = await supabase
+          .from("tasks")
+          .update({ status: "in_progress" })
+          .eq("id", selectedTask.id)
+
+        if (taskError) throw taskError
+
         setLocalBellmen((prev) =>
           prev.map((b) =>
             b.id === selectedAssignee
@@ -247,6 +257,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
                   roomNumber: selectedTask.room_number || "N/A",
                   guestName: selectedTask.guest_name,
                   ticketNumber: selectedTask.ticket_number,
+                  assignedTaskId: selectedTask.id,
                 }
               : b,
           ),
@@ -308,14 +319,6 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
       return
     }
 
-    console.log("[v0] 🔵 Assigning new task to bellman from In Line dialog")
-    console.log("[v0] Bellman:", selectedBellman.full_name)
-    console.log("[v0] Task Type:", taskType)
-    console.log("[v0] Room Number:", roomNumber)
-    console.log("[v0] Description:", description)
-    console.log("[v0] Guest Name:", guestName)
-    console.log("[v0] Ticket Number:", ticketNumber)
-
     try {
       const isLocalBellman = localBellmen.some((b) => b.id === selectedBellman.id)
 
@@ -360,7 +363,6 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           ticketNumber || undefined,
         )
 
-        console.log("[v0] ✅ Task assigned to temporary bellman successfully")
         toast.success("Task assigned to temporary bellman successfully")
       } else {
         // For database bellmen, create a task in the database first
@@ -371,8 +373,6 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         if (!user) {
           throw new Error("User not authenticated")
         }
-
-        console.log("[v0] Creating task in database...")
 
         // Create the task in the database with hotel_id for multi-tenancy
         const { data: newTask, error: createError } = await supabase
@@ -391,12 +391,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           .select()
           .single()
 
-        if (createError) {
-          console.error("[v0] ❌ Failed to create task:", createError)
-          throw createError
-        }
-
-        console.log("[v0] ✅ Task created successfully:", newTask)
+        if (createError) throw createError
 
         // Update bellman status to in_process
         const { error: statusError } = await supabase
@@ -404,10 +399,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           .update({ bellman_status: "in_process" })
           .eq("id", selectedBellman.id)
 
-        if (statusError) {
-          console.error("[v0] ❌ Failed to update bellman status:", statusError)
-          throw statusError
-        }
+        if (statusError) throw statusError
 
         await logActivity(
           selectedBellman.full_name,
@@ -418,7 +410,6 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           ticketNumber || undefined,
         )
 
-        console.log("[v0] ✅ Task assigned to database bellman successfully")
         toast.success("Task assigned successfully")
         window.location.reload()
       }
@@ -434,7 +425,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
       setGuestName("")
       setTicketNumber("")
     } catch (error) {
-      console.error("[v0] ❌ Error assigning task:", error)
+      console.error("Error assigning task:", error)
       toast.error("Failed to assign task - check console for details")
     }
   }
@@ -458,6 +449,22 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
       if (isLocalBellman) {
         const bellman = localBellmen.find((b) => b.id === selectedBellman.id)!
 
+        // Update the database task if this local bellman was assigned one
+        if (bellman.assignedTaskId) {
+          const taskId = bellman.assignedTaskId
+          const updatePayload: Record<string, string> = { status: completionType }
+          if (completionType === "completed" || completionType === "cancelled" || completionType === "empty_room") {
+            updatePayload.completed_at = new Date().toISOString()
+          }
+
+          const { error: taskError } = await supabase
+            .from("tasks")
+            .update(updatePayload)
+            .eq("id", taskId)
+
+          if (taskError) throw taskError
+        }
+
         if (position === "top") {
           setLocalBellmen((prev) => {
             const updatedBellman = {
@@ -467,6 +474,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
               roomNumber: undefined,
               guestName: undefined,
               ticketNumber: undefined,
+              assignedTaskId: undefined,
             }
             const otherBellmen = prev.filter((b) => b.id !== selectedBellman.id && b.status === "in_line")
             const inProcessBellmen = prev.filter((b) => b.status === "in_process" && b.id !== selectedBellman.id)
@@ -481,6 +489,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
               roomNumber: undefined,
               guestName: undefined,
               ticketNumber: undefined,
+              assignedTaskId: undefined,
             }
             const inLineBellmen = prev.filter((b) => b.status === "in_line")
             const inProcessBellmen = prev.filter((b) => b.status === "in_process" && b.id !== selectedBellman.id)
