@@ -53,6 +53,8 @@ export function useRealtimeTasks(initialTasks: Task[], options: UseRealtimeTasks
 
     const { data, error } = await query
 
+    console.log("[v0] refreshTasks: hotelId =", optionsRef.current.hotelId, "fetched =", data?.length, "error =", error?.message)
+
     if (!error && data) {
       setTasks((prev) => {
         // Only update if there are actual changes to avoid unnecessary re-renders
@@ -60,11 +62,13 @@ export function useRealtimeTasks(initialTasks: Task[], options: UseRealtimeTasks
         const newJson = JSON.stringify(data.map((t: Task) => `${t.id}:${t.status}:${t.updated_at}`).sort())
         if (prevJson === newJson) return prev
 
-        // Detect changes and fire callbacks
+        console.log("[v0] refreshTasks: state changed, updating tasks")
+        // Log the status changes
         const prevMap = new Map(prev.map((t) => [t.id, t]))
         for (const task of data as Task[]) {
           const oldTask = prevMap.get(task.id)
           if (oldTask && oldTask.status !== task.status) {
+            console.log("[v0] refreshTasks: task", task.id, "status changed from", oldTask.status, "to", task.status)
             optionsRef.current.onTaskUpdated?.(task, oldTask)
           } else if (!oldTask) {
             optionsRef.current.onTaskInserted?.(task)
@@ -119,8 +123,10 @@ export function useRealtimeTasks(initialTasks: Task[], options: UseRealtimeTasks
           },
           (payload) => {
             const updatedTask = payload.new as Task
+            console.log("[v0] REALTIME UPDATE received:", updatedTask.id, "status:", updatedTask.status)
             setTasks((prev) => {
               const oldTask = prev.find((t) => t.id === updatedTask.id)
+              console.log("[v0] REALTIME UPDATE: old status =", oldTask?.status, "new status =", updatedTask.status)
               optionsRef.current.onTaskUpdated?.(updatedTask, oldTask)
               return prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
             })
@@ -143,6 +149,7 @@ export function useRealtimeTasks(initialTasks: Task[], options: UseRealtimeTasks
           }
         )
         .subscribe((status) => {
+          console.log("[v0] Realtime channel status:", status, "hotelId filter:", options.hotelId)
           setIsConnected(status === "SUBSCRIBED")
 
           // Refresh immediately when we reconnect to catch any missed events
