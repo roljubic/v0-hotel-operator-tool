@@ -9,9 +9,14 @@ interface BellmanDashboardClientProps {
   pendingTasks: any[]
   allBellmen: any[]
   inProgressTasks: any[]
+  currentUser: {
+    id: string
+    hotel_id?: string
+    role: string
+  }
 }
 
-export function BellmanDashboardClient({ pendingTasks, allBellmen, inProgressTasks }: BellmanDashboardClientProps) {
+export function BellmanDashboardClient({ pendingTasks, allBellmen, inProgressTasks, currentUser }: BellmanDashboardClientProps) {
   const [showMenu, setShowMenu] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -100,7 +105,7 @@ export function BellmanDashboardClient({ pendingTasks, allBellmen, inProgressTas
         )}
       </header>
 
-      <SimpleBellmanQueueV2 pendingTasks={pendingTasks} allBellmen={allBellmen} inProgressTasks={inProgressTasks} />
+      <SimpleBellmanQueueV2 pendingTasks={pendingTasks} allBellmen={allBellmen} inProgressTasks={inProgressTasks} currentUser={currentUser} />
     </div>
   )
 }

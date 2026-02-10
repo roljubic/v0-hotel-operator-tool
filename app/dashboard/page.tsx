@@ -14,13 +14,10 @@ export default async function DashboardPage() {
     redirect("/auth/login")
   }
 
-  console.log("[v0] Dashboard: User ID:", user.id)
-
   let userProfile = null
   const { data: profileData, error: profileError } = await supabase.from("users").select("*").eq("id", user.id).single()
 
   if (profileError) {
-    console.log("[v0] Dashboard: Could not fetch from users table, using metadata:", profileError.message)
     // Fallback to user metadata - but hotel_id must come from DB
     userProfile = {
       id: user.id,
@@ -35,15 +32,11 @@ export default async function DashboardPage() {
   }
 
   if (!userProfile) {
-    console.log("[v0] Dashboard: No user profile found, redirecting to login")
     redirect("/auth/login")
   }
 
-  console.log("[v0] Dashboard: User role:", userProfile.role, "hotel_id:", userProfile.hotel_id)
-
   // Users must have a hotel assigned to access the dashboard
   if (!userProfile.hotel_id) {
-    console.log("[v0] Dashboard: User has no hotel_id, redirecting to onboarding")
     redirect("/auth/onboarding")
   }
 
@@ -52,20 +45,14 @@ export default async function DashboardPage() {
   }
 
   if (userProfile.role === "bellman") {
-    console.log("[v0] Dashboard: Redirecting bellman to /dashboard/bellman")
     redirect("/dashboard/bellman")
   }
 
   if (userProfile.role === "bell_staff") {
-    console.log("[v0] Dashboard: Redirecting bell_staff to /dashboard/my-tasks")
     redirect("/dashboard/my-tasks")
   }
 
-  console.log("[v0] Dashboard: Loading main dashboard for role:", userProfile.role)
-
   const { data: tasks } = await supabase.from("tasks").select("*").order("created_at", { ascending: false })
-
-  console.log("[v0] Dashboard: Fetched tasks:", tasks?.length || 0)
 
   return (
     <RoleBasedLayout user={userProfile} currentPage="dashboard">

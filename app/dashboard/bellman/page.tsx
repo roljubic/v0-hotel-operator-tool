@@ -75,6 +75,7 @@ export default async function BellmanDashboardPage() {
       pendingTasks={pendingTasks || []}
       allBellmen={allBellmen || []}
       inProgressTasks={inProgressTasks || []}
+      currentUser={{ id: userProfile.id, hotel_id: userProfile.hotel_id, role: userProfile.role }}
     />
   )
 }
