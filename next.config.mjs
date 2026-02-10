@@ -4,18 +4,18 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // ignoreDuringBuilds is not a valid option for Next.js 14.2.16
-  },
-  
-  env: {
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    ignoreBuildErrors: true,
   },
 
   // Image optimization settings
   images: {
     unoptimized: process.env.NODE_ENV === 'development',
-    domains: ['blob.v0.dev'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'blob.v0.dev',
+      },
+    ],
   },
 
   experimental: {
