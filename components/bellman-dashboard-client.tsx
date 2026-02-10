@@ -39,7 +39,6 @@ export function BellmanDashboardClient({ pendingTasks, allBellmen, inProgressTas
   }, [showMenu])
 
   const handleNavigation = (path: string) => {
-    console.log(`[v0] Navigating to ${path}`)
     setShowMenu(false)
     if (path === "/") {
       router.push("/")
@@ -51,7 +50,6 @@ export function BellmanDashboardClient({ pendingTasks, allBellmen, inProgressTas
   }
 
   const handleLogout = async () => {
-    console.log("[v0] Logout clicked")
     try {
       await supabase.auth.signOut()
       router.push("/auth/login")
@@ -69,8 +67,7 @@ export function BellmanDashboardClient({ pendingTasks, allBellmen, inProgressTas
             <button
               className="p-2 hover:bg-gray-100 rounded-lg"
               onClick={() => {
-                console.log("[v0] Menu button clicked")
-                setShowMenu(!showMenu)
+              setShowMenu(!showMenu)
               }}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
