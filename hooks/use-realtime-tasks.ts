@@ -39,8 +39,12 @@ export function useRealtimeTasks(initialTasks: Task[], options: UseRealtimeTasks
   const supabase = createClient()
   const optionsRef = useRef(options)
   optionsRef.current = options
+  // Track whether initial hydration is complete to avoid server/client mismatch
+  const isHydrated = useRef(false)
 
   const refreshTasks = useCallback(async () => {
+    // Skip refresh during hydration to prevent server/client mismatch
+    if (!isHydrated.current) return
     const query = supabase
       .from("tasks")
       .select("*")
@@ -76,6 +80,13 @@ export function useRealtimeTasks(initialTasks: Task[], options: UseRealtimeTasks
       setLastUpdate(new Date())
     }
   }, [supabase])
+
+  // Mark hydration as complete after first render
+  useEffect(() => {
+    isHydrated.current = true
+    // Do an initial refresh now that hydration is done
+    refreshTasks()
+  }, [refreshTasks])
 
   useEffect(() => {
     let channel: RealtimeChannel | null = null
