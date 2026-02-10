@@ -43,8 +43,6 @@ export function RoleBasedLayout({
   }
 
   const getNavigationItems = () => {
-    console.log("[v0] Navigation: User role is", user.role)
-
     const baseItems = [
       {
         name: "Dashboard",
@@ -85,13 +83,6 @@ export function RoleBasedLayout({
     ]
 
     const items = [...superAdminItems, ...baseItems, ...adminItems].filter((item) => item.roles.includes(user.role))
-
-    console.log(
-      "[v0] Navigation: Filtered items for role",
-      user.role,
-      ":",
-      items.map((i) => ({ name: i.name, href: i.href })),
-    )
 
     return items
   }
@@ -154,10 +145,7 @@ export function RoleBasedLayout({
               className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isActive ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               }`}
-              onClick={() => {
-                console.log("[v0] Navigation: Clicked", item.name, "going to", item.href)
-                setIsSidebarOpen(false)
-              }}
+              onClick={() => setIsSidebarOpen(false)}
             >
               <Icon className="h-5 w-5" />
               <span>{item.name}</span>
