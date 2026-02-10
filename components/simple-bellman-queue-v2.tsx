@@ -337,8 +337,32 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
       }
 
       if (isLocalBellman) {
-        // For local bellmen, just update their status locally
         const bellman = localBellmen.find((b) => b.id === selectedBellman.id)!
+
+        // Create the task in the database so the manager can see it
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!user) throw new Error("User not authenticated")
+
+        const { data: newTask, error: createError } = await supabase
+          .from("tasks")
+          .insert({
+            title: taskTitle,
+            description: taskDescription,
+            room_number: finalRoomNumber,
+            guest_name: guestName || null,
+            ticket_number: ticketNumber || null,
+            created_by: user.id,
+            status: "in_progress",
+            hotel_id: currentUser.hotel_id,
+          })
+          .select()
+          .single()
+
+        if (createError) throw createError
+
         setLocalBellmen((prev) =>
           prev.map((b) =>
             b.id === selectedBellman.id
@@ -349,6 +373,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
                   roomNumber: finalRoomNumber || "N/A",
                   guestName: guestName || undefined,
                   ticketNumber: ticketNumber || undefined,
+                  assignedTaskId: newTask.id,
                 }
               : b,
           ),
