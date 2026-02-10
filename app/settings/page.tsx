@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
+import { ClientDate } from "@/components/client-date"
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null)
@@ -409,10 +410,10 @@ export default function SettingsPage() {
                 <strong>Email:</strong> {user?.email}
               </p>
               <p>
-                <strong>Account Created:</strong> {new Date(user?.created_at).toLocaleDateString()}
+                <strong>Account Created:</strong> <ClientDate date={user?.created_at} format="date" />
               </p>
               <p>
-                <strong>Last Sign In:</strong> {new Date(user?.last_sign_in_at).toLocaleDateString()}
+                <strong>Last Sign In:</strong> <ClientDate date={user?.last_sign_in_at} format="date" />
               </p>
             </div>
           </CardContent>

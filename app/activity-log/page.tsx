@@ -90,7 +90,14 @@ export default function ActivityLogPage() {
     setDateFilter("")
   }
 
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const formatTimestamp = (timestamp: string) => {
+    if (!mounted) return ""
     return new Date(timestamp).toLocaleString()
   }
 

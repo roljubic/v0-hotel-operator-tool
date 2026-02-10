@@ -47,7 +47,7 @@ export default function SignupPage() {
     const sanitizedPhone = phone.trim().slice(0, 20)
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
@@ -62,7 +62,15 @@ export default function SignupPage() {
         },
       })
       if (error) throw error
-      router.push("/auth/onboarding")
+
+      // If a session was returned, the user is immediately authenticated
+      // (email confirmation is disabled or auto-confirm is on)
+      if (data.session) {
+        router.push("/auth/onboarding")
+      } else {
+        // No session means email confirmation is required
+        router.push("/auth/signup-success")
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
     } finally {

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ClientDate } from "@/components/client-date"
 
 interface Hotel {
   id: string
@@ -67,7 +68,7 @@ export function HotelsTable({ hotels }: { hotels: Hotel[] }) {
                     <Badge className="bg-zinc-800 text-zinc-400">inactive</Badge>
                   )}
                 </TableCell>
-                <TableCell className="text-zinc-400">{new Date(hotel.created_at).toLocaleDateString()}</TableCell>
+                <TableCell className="text-zinc-400"><ClientDate date={hotel.created_at} format="date" /></TableCell>
                 <TableCell>
                   <Link href={`/admin/hotels/${hotel.id}`}>
                     <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300 hover:bg-zinc-800">

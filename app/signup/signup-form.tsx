@@ -30,7 +30,7 @@ export function SignupForm() {
       email,
       password,
       options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/dashboard`,
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/onboarding`,
       },
     })
 
@@ -40,7 +40,13 @@ export function SignupForm() {
       return
     }
 
-    router.push("/dashboard")
+    // If a session was returned, user is immediately authenticated
+    if (data.session) {
+      router.push("/auth/onboarding")
+    } else {
+      // Email confirmation required
+      router.push("/auth/signup-success")
+    }
   }
 
   return (

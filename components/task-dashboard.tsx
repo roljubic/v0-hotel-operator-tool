@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { RealtimeNotifications } from "@/components/realtime-notifications"
 import { useRealtimeTasks, type Task } from "@/hooks/use-realtime-tasks"
+import { ClientDate } from "@/components/client-date"
 
 interface TaskDashboardProps {
   user: any
@@ -347,7 +348,7 @@ export function TaskDashboard({ user, tasks: initialTasks }: TaskDashboardProps)
                       {task.guest_name && <span>{task.guest_name}</span>}
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {new Date(task.created_at).toLocaleString()}
+                        <ClientDate date={task.created_at} />
                       </span>
                     </div>
                   </div>
