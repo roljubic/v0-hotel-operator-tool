@@ -501,35 +501,21 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         const currentTask = currentInProgressTasks.find((task) => task.assigned_to === selectedBellman.id)
 
         if (currentTask) {
-          console.log("=".repeat(80))
-          console.log("[v0] 🔵 BELLMAN COMPLETING TASK")
-          console.log("=".repeat(80))
-          console.log("[v0] Task ID:", currentTask.id)
-          console.log("[v0] Task Title:", currentTask.title)
-          console.log("[v0] Room Number:", currentTask.room_number)
-          console.log("[v0] Current Status:", currentTask.status)
-          console.log("[v0] New Status:", completionType)
-          console.log("[v0] Bellman:", selectedBellman.full_name)
-          console.log("[v0] Timestamp:", new Date().toISOString())
-          console.log("-".repeat(80))
+          // Build the update payload - include completed_at for terminal statuses
+          const updatePayload: Record<string, string> = { status: completionType }
+          if (completionType === "completed" || completionType === "cancelled" || completionType === "empty_room") {
+            updatePayload.completed_at = new Date().toISOString()
+          }
 
-          const { data: updateData, error: taskError } = await supabase
+          const { error: taskError } = await supabase
             .from("tasks")
-            .update({ status: completionType })
+            .update(updatePayload)
             .eq("id", currentTask.id)
             .select()
 
           if (taskError) {
-            console.error("[v0] ❌ DATABASE UPDATE FAILED:", taskError)
             throw taskError
           }
-
-          console.log("[v0] ✅ DATABASE UPDATE SUCCESSFUL!")
-          console.log("[v0] Updated task data:", JSON.stringify(updateData, null, 2))
-          console.log("[v0] 📡 Real-time event should now broadcast to manager/front desk dashboards")
-          console.log("=".repeat(80))
-        } else {
-          console.warn("[v0] ⚠️ No current task found for bellman:", selectedBellman.full_name)
         }
 
         const { error: statusError } = await supabase
@@ -538,7 +524,6 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
           .eq("id", selectedBellman.id)
 
         if (statusError) {
-          console.error("[v0] ❌ Failed to update bellman status:", statusError)
           throw statusError
         }
 
@@ -554,8 +539,6 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
         }
 
         toast.success(`Task ${completionType} - ${selectedBellman.full_name} back in line`)
-
-        window.location.reload()
       }
 
       setShowCompletionDialog(false)
@@ -563,7 +546,7 @@ export function SimpleBellmanQueueV2({ pendingTasks, allBellmen, inProgressTasks
       setSelectedBellman(null)
       setCompletionType(null)
     } catch (error) {
-      console.error("[v0] ❌ Error completing task:", error)
+      console.error("Error completing task:", error)
       toast.error("Failed to complete task")
     }
   }
